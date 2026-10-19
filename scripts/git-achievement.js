@@ -284,50 +284,56 @@ async function handlePRMode(commitMsg) {
   console.log(`📌 작업 브랜치 [${branchName}] 생성 및 전환...`);
   run(`git checkout -b ${branchName}`);
 
-  // 3. 파일 스테이징 및 Co-authored 커밋
-  console.log('📝 커밋 작성 (Co-author 포함)...');
-  const coAuthor = getCoAuthor();
-  if (status.trim()) {
-    run('git add -A');
-    if (coAuthor) {
-      run(`git commit -m "${commitMsg}" -m "${coAuthor}"`);
-    } else {
-      run(`git commit -m "${commitMsg}"`);
+  let branchCreated = true;
+  try {
+    // 3. 파일 스테이징 및 Co-authored 커밋
+    console.log('📝 커밋 작성 (Co-author 포함)...');
+    const coAuthor = getCoAuthor();
+    if (status.trim()) {
+      run('git add -A');
+      if (coAuthor) {
+        run(`git commit -m "${commitMsg}" -m "${coAuthor}"`);
+      } else {
+        run(`git commit -m "${commitMsg}"`);
+      }
+    } else if (allowEmpty) {
+      if (coAuthor) {
+        run(`git commit --allow-empty -m "${commitMsg}" -m "${coAuthor}"`);
+      } else {
+        run(`git commit --allow-empty -m "${commitMsg}"`);
+      }
     }
-  } else if (allowEmpty) {
-    if (coAuthor) {
-      run(`git commit --allow-empty -m "${commitMsg}" -m "${coAuthor}"`);
+
+    // 4. 원격 브랜치 푸시
+    console.log(`🚀 원격 저장소 [${targetRemote}]에 [${branchName}] 브랜치 푸시...`);
+    run(`git push -u ${targetRemote} ${branchName}`);
+
+    const token = getGitHubToken();
+    const compareUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/compare/main...${branchName}?expand=1`;
+
+    let apiSuccess = false;
+    if (token) {
+      try {
+        await createAndMergeViaAPI(token, REPO_OWNER, REPO_NAME, branchName, commitMsg);
+        apiSuccess = true;
+      } catch (err) {
+        console.warn(`⚠️ API 자동 머지 중 알림 (${err.message}). 웹 브라우저 방식으로 대체합니다.`);
+        await openBrowserAndPrompt(compareUrl);
+      }
     } else {
-      run(`git commit --allow-empty -m "${commitMsg}"`);
-    }
-  }
-
-  // 4. 원격 브랜치 푸시
-  console.log(`🚀 원격 저장소 [${targetRemote}]에 [${branchName}] 브랜치 푸시...`);
-  run(`git push -u ${targetRemote} ${branchName}`);
-
-  const token = getGitHubToken();
-  const compareUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/compare/main...${branchName}?expand=1`;
-
-  let apiSuccess = false;
-  if (token) {
-    try {
-      await createAndMergeViaAPI(token, REPO_OWNER, REPO_NAME, branchName, commitMsg);
-      apiSuccess = true;
-    } catch (err) {
-      console.warn(`⚠️ API 자동 머지 중 알림 (${err.message}). 웹 브라우저 방식으로 대체합니다.`);
       await openBrowserAndPrompt(compareUrl);
     }
-  } else {
-    await openBrowserAndPrompt(compareUrl);
+  } catch (err) {
+    console.error(`\n❌ [오류 발생] 워크플로우 진행 중 문제가 발생했습니다: ${err.message}`);
+    throw err;
+  } finally {
+    // 5. 로컬 브랜치 안전 복귀 및 임시 브랜치 정리 (무조건 실행)
+    console.log('\n🔄 로컬 브랜치 복귀 및 원격 동기화...');
+    run(`git checkout ${currentBranch}`, { ignoreError: true });
+    run(`git pull ${targetRemote} ${currentBranch}`, { ignoreError: true });
+    run(`git branch -D ${branchName}`, { ignoreError: true });
+    run(`git push ${targetRemote} --delete ${branchName}`, { ignoreError: true, silent: true });
   }
-
-  // 5. 로컬 main 복귀 및 동기화
-  console.log('\n🔄 로컬 브랜치 복귀 및 원격 동기화...');
-  run(`git checkout ${currentBranch}`);
-  run(`git pull ${targetRemote} ${currentBranch}`, { ignoreError: true });
-  run(`git branch -D ${branchName}`, { ignoreError: true });
-  run(`git push ${targetRemote} --delete ${branchName}`, { ignoreError: true, silent: true });
 
   console.log('\n✨ 모든 업적 연계 커밋 및 머지가 완벽하게 완료되었습니다! 🏆\n');
 }
