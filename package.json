@@ -16,7 +16,8 @@
     "sync-version": "node scripts/sync-readme-version.js",
     "audit": "node scripts/run-code-audit.cjs",
     "git:pr": "node scripts/git-achievement.js pr",
-    "git:commit": "node scripts/git-achievement.js direct"
+    "git:commit": "node scripts/git-achievement.js direct",
+    "git:check": "node scripts/git-achievement.js check"
   },
   "dependencies": {
     "docx-preview": "^0.4.1",
